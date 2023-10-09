@@ -26,7 +26,7 @@ def token_updated(token):
     cache_file.write_text(json.dumps(token), encoding="utf-8")
 
 
-def _format_filename(event, directory):
+def _format_filename(doorbell, event, directory):
     if not isinstance(event, dict):
         return None
 
@@ -37,13 +37,14 @@ def _format_filename(event, directory):
 
     filename = "{}_{}_{}_{}.mp4".format(
         event["created_at"].astimezone(None).strftime("%Y-%m-%d_%Hh%Mm%Ss_%Z"),
-        event["kind"],
+        event["kind"], # "kind of device (doorbots, chimes, stickup_cams, authorized_doorbots)"
         answered_status,
         event["id"]
     )
 
     file_path ="{}_{}/{}/{}".format(
-        event["doorbot"]["id"], event["doorbot"]["description"],
+        doorbell.device_id,
+        event["doorbot"]["description"],
         event["created_at"].astimezone(None).year,
         event["created_at"].astimezone(None).strftime("%Y-%m")
     )
@@ -81,7 +82,7 @@ def cli():
     )
 
     parser.add_argument(
-        "-did", "--device_id", type=str, dest="device_id", default="", help="device ID. You can get this from the listing"
+        "-did", "--device-id", type=str, dest="device_id", default="", help="device ID. You can get this from the listing"
     )
 
     parser.add_argument(
@@ -133,7 +134,7 @@ def cli():
         for key in devices:
             devices_by_kind = devices[key]
             for device in devices_by_kind:
-                print("[" + key + "]", "--device_id", device.device_id, "\t", device.name, device.address)
+                print("[" + key + "]", "--device-id", device.device_id, "\t", device.name, device.address)
         return
 
     doorbell = ""
@@ -212,7 +213,7 @@ def cli():
             download_counter = 0
             for event in history:
                 counter += 1
-                filename = _format_filename(event, args.directory)
+                filename = _format_filename(doorbell, event, args.directory)
                 filepath = Path(filename)
                 if not filepath.is_file():
                     download_counter +=1
