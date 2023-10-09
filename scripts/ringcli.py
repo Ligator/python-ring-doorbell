@@ -154,6 +154,8 @@ def cli():
     if (doorbell == ""):
         print("Device", args.device_id, "not found")
         return
+    else:
+        print("Device", doorbell.device_id, doorbell.name, doorbell.address)
 
     if args.count:
         print(
@@ -163,11 +165,13 @@ def cli():
 
         events = []
         counter = 0
-        history = doorbell.history(limit=100)
+        history = doorbell.history(limit=batch_size)
         while len(history) > 0:
             events += history
             counter += len(history)
-            history = doorbell.history(older_than=history[-1]["id"])
+            last_event_id = history[-1]["id"]
+            history = doorbell.history(limit=batch_size, older_than=last_event_id)
+            history = [event for event in history if event["id"] != last_event_id]
 
         motion = len([m["kind"] for m in events if m["kind"] == "motion"])
         ding = len([m["kind"] for m in events if m["kind"] == "ding"])
@@ -178,29 +182,14 @@ def cli():
         print("\tMotion triggered: {}".format(motion))
         print("\tOn-Demand triggered: {}".format(on_demand))
 
-        # already have all events in memory
-        if args.download_all:
-            counter = 0
-            print(
-                "\tDownloading all videos linked on your Ring account.\n"
-                + "\tThis may take some time....\n"
-            )
-
-            for event in events:
-                counter += 1
-                filename = _format_filename(event)
-                print("\t{}/{} Downloading {}".format(counter, len(events), filename))
-
-                doorbell.recording_download(
-                    event["id"], filename=filename, override=False
-                )
-
-    if args.download_all and not args.count:
+    if args.download_all:
         print(
             "\tDownloading all videos linked on your Ring account.\n"
             + "\tThis may take some time....\n"
         )
         history = doorbell.history(limit=batch_size)
+        counter = 0
+        download_counter = 0
 
         while len(history) > 0:
             print(
@@ -209,8 +198,6 @@ def cli():
                 + " videos"
             )
 
-            counter = 0
-            download_counter = 0
             for event in history:
                 counter += 1
                 filename = _format_filename(doorbell, event, args.directory)
@@ -228,7 +215,9 @@ def cli():
                     except:
                         print("\t{}/{} Error {}".format(counter, len(history), filename))
 
-            history = doorbell.history(limit=batch_size, older_than=history[-1]["id"])
+            last_event_id = history[-1]["id"]
+            history = doorbell.history(limit=batch_size, older_than=last_event_id)
+            history = [event for event in history if event["id"] != last_event_id]
 
         print("Downloaded videos: ", download_counter)
         print("Total videos: ", counter)
