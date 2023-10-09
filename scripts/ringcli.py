@@ -20,7 +20,7 @@ def _bar():
     print("---------------------------------")
 
 
-cache_file = Path("ring_token.cache")
+cache_file = Path("test_token.cache")
 
 
 def token_updated(token):
