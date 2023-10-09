@@ -19,7 +19,9 @@ def _header():
 def _bar():
     print("---------------------------------")
 
+
 cache_file = Path("ring_token.cache")
+
 
 def token_updated(token):
     """Writes token to file"""
@@ -36,7 +38,7 @@ def _format_filename(doorbell, event, directory):
         answered_status = "_"
 
     filename = "{}_{}_{}_{}.mp4".format(
-        event["created_at"].astimezone(None).strftime("%Y-%m-%d_%Hh%Mm%Ss_%Z"),
+        event["created_at"].astimezone(None).strftime("%Y-%m-%d_%Hh%Mm%Ss_%Z"), # Time in current time zone.
         event["kind"], # "kind of device (doorbots, chimes, stickup_cams, authorized_doorbots)"
         answered_status,
         event["id"]
