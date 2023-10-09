@@ -1,9 +1,11 @@
 # vim:sw=4:ts=4:et
 # Many thanks to @troopermax <https://github.com/troopermax>
 """Python Ring CLI."""
+import os
 import json
 import getpass
 import argparse
+from datetime import datetime
 from pathlib import Path
 from oauthlib.oauth2 import MissingTokenError
 from ring_doorbell import Ring, Auth
@@ -17,30 +19,41 @@ def _header():
 def _bar():
     print("---------------------------------")
 
-
-cache_file = Path("test_token.cache")
-
+cache_file = Path("ring_token.cache")
 
 def token_updated(token):
     """Writes token to file"""
     cache_file.write_text(json.dumps(token), encoding="utf-8")
 
 
-def _format_filename(event):
+def _format_filename(event, directory):
     if not isinstance(event, dict):
         return None
 
     if event["answered"]:
         answered_status = "answered"
     else:
-        answered_status = "not_answered"
+        answered_status = "_"
 
-    filename = "{}_{}_{}_{}".format(
-        event["created_at"], event["kind"], answered_status, event["id"]
+    filename = "{}_{}_{}_{}.mp4".format(
+        event["created_at"].astimezone(None).strftime("%Y-%m-%d_%Hh%Mm%Ss_%Z"),
+        event["kind"],
+        answered_status,
+        event["id"]
     )
 
-    filename = filename.replace(" ", "_").replace(":", ".") + ".mp4"
-    return filename
+    file_path ="{}_{}/{}/{}".format(
+        event["doorbot"]["id"], event["doorbot"]["description"],
+        event["created_at"].astimezone(None).year,
+        event["created_at"].astimezone(None).strftime("%Y-%m")
+    )
+
+    if directory:
+        file_path = directory + "/" + file_path
+
+    os.makedirs(file_path, exist_ok=True)
+
+    return file_path + "/" + filename
 
 
 def cli():
@@ -60,6 +73,18 @@ def cli():
     )
 
     parser.add_argument(
+        "-d", "--directory", type=str, dest="directory", default="", help="directory to save the videos"
+    )
+
+    parser.add_argument(
+        "-l", "--list", action="store_true", default=False, help="list of available devices"
+    )
+
+    parser.add_argument(
+        "-did", "--device_id", type=str, dest="device_id", default="", help="device ID. You can get this from the listing"
+    )
+
+    parser.add_argument(
         "--count",
         action="store_true",
         default=False,
@@ -75,6 +100,8 @@ def cli():
 
     args = parser.parse_args()
     _header()
+
+    batch_size = 100
 
     # connect to Ring account
     if cache_file.is_file():
@@ -99,9 +126,33 @@ def cli():
     ring = Ring(auth)
     ring.update_data()
     devices = ring.devices()
-    doorbell = devices["doorbots"][0]
 
     _bar()
+
+    if args.list:
+        for key in devices:
+            devices_by_kind = devices[key]
+            for device in devices_by_kind:
+                print("[" + key + "]", "--device_id", device.device_id, "\t", device.name, device.address)
+        return
+
+    doorbell = ""
+
+    if args.device_id:
+        for key in devices:
+            devices_by_kind = devices[key]
+            for device in devices_by_kind:
+                if (device.device_id == args.device_id):
+                    doorbell = device
+    else:
+        for key in devices:
+            devices_by_kind = devices[key]
+            for device in devices_by_kind:
+                doorbell = device
+
+    if (doorbell == ""):
+        print("Device", args.device_id, "not found")
+        return
 
     if args.count:
         print(
@@ -148,7 +199,7 @@ def cli():
             "\tDownloading all videos linked on your Ring account.\n"
             + "\tThis may take some time....\n"
         )
-        history = doorbell.history(limit=100)
+        history = doorbell.history(limit=batch_size)
 
         while len(history) > 0:
             print(
@@ -158,17 +209,28 @@ def cli():
             )
 
             counter = 0
+            download_counter = 0
             for event in history:
                 counter += 1
-                filename = _format_filename(event)
-                print("\t{}/{} Downloading {}".format(counter, len(history), filename))
+                filename = _format_filename(event, args.directory)
+                filepath = Path(filename)
+                if not filepath.is_file():
+                    download_counter +=1
+                    print("\t{}/{} Downloading {}".format(counter, len(history), filename))
 
-                doorbell.recording_download(
-                    event["id"], filename=filename, override=False
-                )
+                    try:
+                        doorbell.recording_download(
+                            event["id"], filename=filename, override=False
+                        )
+                        right_date = datetime.timestamp(event["created_at"])
+                        os.utime(filename, (right_date, right_date))
+                    except:
+                        print("\t{}/{} Error {}".format(counter, len(history), filename))
 
-            history = doorbell.history(limit=100, older_than=history[-1]["id"])
+            history = doorbell.history(limit=batch_size, older_than=history[-1]["id"])
 
+        print("Downloaded videos: ", download_counter)
+        print("Total videos: ", counter)
 
 if __name__ == "__main__":
     cli()
